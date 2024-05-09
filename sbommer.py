@@ -128,8 +128,7 @@ def add_system_metadata(bom):
     print("uid", uid)
     if "properties" not in bom:
         bom["properties"] = []
-    bom["properties"].append({"name": "machineId", "value": uid}) # FIXME this should go away
-    bom["properties"].append({"name": "Codenotary:Trustcenter:MachineId", "value": uid})
+    bom["properties"].append({"name": "Codenotary:Trustcenter:MachineID", "value": uid})
     bom["properties"].append({"name": "Codenotary:Trustcenter:Hostname", "value": socket.getfqdn()})
 
 
