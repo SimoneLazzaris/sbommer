@@ -229,6 +229,20 @@ def scan_docker_containers(bom):
             print("appending", c["name"])
 
 
+def cleanup_sbom(sbom):
+    # remove component which name is empty
+    for c in sbom["components"]:
+        if c["name"] == "" and "purl" is not in c:
+            print("deleting", c)
+            sbom["components"].remove(c)
+            for dep in sbom["dependencies"]:
+                if dep["ref"] == c["bom-ref"]:
+                    sbom["dependencies"].remove(dep)
+                    continue
+                for d in dep["dependsOn"]:
+                    if d == c["bom-ref"]:
+                        dep["dependsOn"].remove(d)
+
 def check_trivy():
     result = subprocess.run(["which", "trivy"], stdout=subprocess.PIPE)
     if result.returncode != 0:
@@ -249,6 +263,7 @@ bom = trivy_scan_base()
 add_component_metadata(bom)
 add_system_metadata(bom)
 scan_docker_containers(bom)
+cleanup_sbom(bom)
 # upload_sbom("https://guardian.codenotary.com/api/v1/codenotary/sbom", bom)
 
 with open("output.json", "wt") as f:
