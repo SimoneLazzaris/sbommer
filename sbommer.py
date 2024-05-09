@@ -191,6 +191,9 @@ def add_docker(bom, image, sha_id):
         "purl": "pkg:docker/{}@{}".format(imageName, sha_id),
         "properties": [],
     }
+    m = re.match("sha256:([a-fA-F0-9]+)$", sha_id)
+    if m is not None:
+        dok["hashes"] = [ {"alg": "SHA-256", "content": m.group(1)}]
     if component_present(bom, dok):
         return None
     bom["components"].append(dok)
