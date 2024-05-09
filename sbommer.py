@@ -128,6 +128,17 @@ def get_docker_containers():
         yield json.loads(instance)
 
 
+def get_docker_sha(container_id):
+    result = subprocess.run(
+        ["docker", "container", "inspect", container_id],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+        stderr=subprocess.PIPE
+    )
+    info = json.loads(result.stdout)
+    return info[0]["Image"]
+
+
 def same_attr(a,b, attr):
     if attr not in a or attr not in b:
         return False
@@ -143,9 +154,9 @@ def component_present(bom, new_component):
             return True
     return False
 
-def add_docker(bom, image):
+def add_docker(bom, image, sha_id):
     if ":" in image:
-        imageName, imageVersion = image.split(":")
+        imageName, imageVersion = image.split(":",1)
     else:
         imageName = image
         imageVersion = "latest"
@@ -155,7 +166,7 @@ def add_docker(bom, image):
         "type": "container",
         "name": imageName,
         "version": imageVersion,
-        "purl": "pkg:docker/{}@{}".format(imageName,imageVersion),
+        "purl": "pkg:docker/{}@{}".format(imageName,sha_id),
         "properties": []
         }
     if component_present(bom, dok):
@@ -174,12 +185,14 @@ def add_dependencies(bom, parent_id, component_id):
             dep["dependsOn"].append(component_id)
             return
 
+
 def scan_docker_containers(bom):
         print("Scanning containers")
         docks = get_docker_containers()
         for d in docks:
             print("Found image", d["Image"])
-            dok_id = add_docker(bom, d["Image"])
+            sha_id = get_docker_sha(d["ID"])
+            dok_id = add_docker(bom, d["Image"], sha_id)
             if dok_id is None:
                 print("Already there")
                 continue
