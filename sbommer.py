@@ -113,12 +113,12 @@ def add_component_metadata(bom):
                 p["properties"] = []
 
             p["properties"].append(
-                {"name": "trustcenter#running", "value": str(proclist[fullname])}
+                {"name": "Codenotary:Trustcenter:Running", "value": str(proclist[fullname])}
             )
         if fullname in listenproc:
             print("listening on", listenproc[fullname])
             p["properties"].append(
-                {"name": "trustcenter#ports", "value": listenproc[fullname]}
+                {"name": "Codenotary:Trustcenter:Ports", "value": listenproc[fullname]}
             )
 
 
@@ -128,8 +128,9 @@ def add_system_metadata(bom):
     print("uid", uid)
     if "properties" not in bom:
         bom["properties"] = []
-    bom["properties"].append({"name": "machineId", "value": uid})
-    bom["properties"].append({"name": "hostname", "value": socket.getfqdn()})
+    bom["properties"].append({"name": "machineId", "value": uid}) # FIXME this should go away
+    bom["properties"].append({"name": "Codenotary:Trustcenter:MachineId", "value": uid})
+    bom["properties"].append({"name": "Codenotary:Trustcenter:Hostname", "value": socket.getfqdn()})
 
 
 def get_docker_containers():
