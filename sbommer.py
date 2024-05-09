@@ -133,6 +133,13 @@ def add_system_metadata(bom):
         bom["properties"] = []
     bom["properties"].append({"name": "Codenotary:Trustcenter:MachineID", "value": uid})
     bom["properties"].append({"name": "Codenotary:Trustcenter:Hostname", "value": socket.getfqdn()})
+    result = subprocess.run(
+        ["uname", "-r"],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+        stderr=subprocess.PIPE,
+    )
+    bom["properties"].append({"name": "Codenotary:Trustcenter:KernelVersion", "value": result.stdout.strip()})
 
 
 def get_docker_containers():
