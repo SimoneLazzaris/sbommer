@@ -113,7 +113,7 @@ def add_system_metadata(bom):
 
 
 def get_docker_containers():
-    result = subprocess.run(["which", "docker"])
+    result = subprocess.run(["which", "docker"], stdout=subprocess.PIPE)
     if result.returncode != 0:
         return
     result = subprocess.run(
@@ -125,6 +125,22 @@ def get_docker_containers():
     for instance in result.stdout.strip().split("\n"):
         yield json.loads(instance)
 
+
+def same_attr(a,b, attr):
+    if attr not in a or attr not in b:
+        return False
+    return a[attr] == b[attr]
+
+def component_present(bom, new_component):
+    for c in bom["components"]:
+        if same_attr(c, new_component, "bom-ref"):
+            return True
+        if same_attr(c, new_component, "purl"):
+            return True
+        if same_attr(c, new_component, "name") and same_attr(c, new_component, "version"):
+            return True
+    return False
+
 def scan_docker_containers(bom):
         print("Scanning containers")
         docks = get_docker_containers()
@@ -132,11 +148,14 @@ def scan_docker_containers(bom):
             print("Found image", d["Image"])
             container_sbom = trivy_scan_container(d["Image"])
             for c in container_sbom["components"]:
+                if component_present(bom, c):
+                    print("skipping already present", c["name"])
+                    continue
                 bom["components"].append(c)
                 print("appending", c["name"])
 
 def check_trivy():
-    result = subprocess.run(["which", "trivy"])
+    result = subprocess.run(["which", "trivy"], stdout=subprocess.PIPE)
     if result.returncode != 0:
         print("Trivy not installed")
         sys.exit(1)
