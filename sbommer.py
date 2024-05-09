@@ -6,12 +6,13 @@ import sys
 import requests
 import uuid
 
+
 def trivy_scan_base():
     result = subprocess.run(
-        "trivy rootfs / --scanners="" --format cyclonedx".split(" "),
+        'trivy rootfs / --scanners="" --format cyclonedx'.split(" "),
         stdout=subprocess.PIPE,
         universal_newlines=True,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
     return json.loads(result.stdout)
 
@@ -21,7 +22,7 @@ def trivy_scan_container(image):
         ["trivy", "image", image, '--scanners=""', "--format=cyclonedx"],
         stdout=subprocess.PIPE,
         universal_newlines=True,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
     return json.loads(result.stdout)
 
@@ -35,7 +36,7 @@ def list_tcp_udp_listening_processes():
             ["ss", "-nlptun"],
             stdout=subprocess.PIPE,
             universal_newlines=True,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
 
         if result.stderr:
@@ -43,30 +44,41 @@ def list_tcp_udp_listening_processes():
             return
 
         # Parse the output, skipping the header line
-        for line in result.stdout.strip().split('\n')[1:]:
+        for line in result.stdout.strip().split("\n")[1:]:
             try:
                 parts = line.split()
 
                 protocol = parts[0].lower()  # Extract protocol type
-                local_address_port = parts[4].split(':')  # Split into address and port components
+                local_address_port = parts[4].split(
+                    ":"
+                )  # Split into address and port components
                 if len(local_address_port) == 2:
                     port = local_address_port[1]
                     if port.isdigit():
-                        users = line.split("users:")[1].strip().replace('(', '').replace('))', '')
-                        process_name = users.split(',')[0].split('"')[1]  # Extract process name
+                        users = (
+                            line.split("users:")[1]
+                            .strip()
+                            .replace("(", "")
+                            .replace("))", "")
+                        )
+                        process_name = users.split(",")[0].split('"')[
+                            1
+                        ]  # Extract process name
 
                         # Find the executable path using 'which' command
                         path_result = subprocess.run(
-                            ['which', process_name],
+                            ["which", process_name],
                             stdout=subprocess.PIPE,
-                            universal_newlines=True
+                            universal_newlines=True,
                         )
                         path = path_result.stdout.strip()
                         if path:
                             if path in unique_entries:
-                                unique_entries[path] = "{},{}:{}".format(unique_entries[path], port, protocol)
+                                unique_entries[path] = "{},{}:{}".format(
+                                    unique_entries[path], port, protocol
+                                )
                             else:
-                                unique_entries[path] = "{}:{}".format(port,protocol)
+                                unique_entries[path] = "{}:{}".format(port, protocol)
             except IndexError as e:
                 print(f"Error processing line: '{line}' - {e}")
     except Exception as e:
@@ -76,7 +88,9 @@ def list_tcp_udp_listening_processes():
 
 
 def running_process_list():
-    process = subprocess.Popen(['ps', '-eo' ,'pid,args'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        ["ps", "-eo", "pid,args"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, notused = process.communicate()
     ret = {}
     for line in stdout.splitlines():
@@ -90,18 +104,22 @@ def running_process_list():
 
 
 def add_component_metadata(bom):
-    for p in filter(lambda x: x["type"]=="application",bom["components"]):
+    for p in filter(lambda x: x["type"] == "application", bom["components"]):
         fullname = "/" + p["name"]
-        print("found",fullname)
+        print("found", fullname)
         if fullname in proclist:
             print("running")
             if "properties" not in p:
-                p["properties"]=[]
+                p["properties"] = []
 
-            p["properties"].append({"name": "trustcenter#running", "value": str(proclist[fullname])})
+            p["properties"].append(
+                {"name": "trustcenter#running", "value": str(proclist[fullname])}
+            )
         if fullname in listenproc:
             print("listening on", listenproc[fullname])
-            p["properties"].append({"name": "trustcenter#ports", "value": listenproc[fullname]})
+            p["properties"].append(
+                {"name": "trustcenter#ports", "value": listenproc[fullname]}
+            )
 
 
 def add_system_metadata(bom):
@@ -110,8 +128,8 @@ def add_system_metadata(bom):
     print("uid", uid)
     if "properties" not in bom:
         bom["properties"] = []
-    bom["properties"].append( {"name": "machineId", "value": uid } )
-    bom["properties"].append( {"name": "hostname", "value": socket.getfqdn() } )
+    bom["properties"].append({"name": "machineId", "value": uid})
+    bom["properties"].append({"name": "hostname", "value": socket.getfqdn()})
 
 
 def get_docker_containers():
@@ -122,7 +140,7 @@ def get_docker_containers():
         "docker container ls --format json".split(" "),
         stdout=subprocess.PIPE,
         universal_newlines=True,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
     for instance in result.stdout.strip().split("\n"):
         yield json.loads(instance)
@@ -133,16 +151,17 @@ def get_docker_sha(container_id):
         ["docker", "container", "inspect", container_id],
         stdout=subprocess.PIPE,
         universal_newlines=True,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
     info = json.loads(result.stdout)
     return info[0]["Image"]
 
 
-def same_attr(a,b, attr):
+def same_attr(a, b, attr):
     if attr not in a or attr not in b:
         return False
     return a[attr] == b[attr]
+
 
 def component_present(bom, new_component):
     for c in bom["components"]:
@@ -150,13 +169,16 @@ def component_present(bom, new_component):
             return True
         if same_attr(c, new_component, "purl"):
             return True
-        if same_attr(c, new_component, "name") and same_attr(c, new_component, "version"):
+        if same_attr(c, new_component, "name") and same_attr(
+            c, new_component, "version"
+        ):
             return True
     return False
 
+
 def add_docker(bom, image, sha_id):
     if ":" in image:
-        imageName, imageVersion = image.split(":",1)
+        imageName, imageVersion = image.split(":", 1)
     else:
         imageName = image
         imageVersion = "latest"
@@ -166,18 +188,16 @@ def add_docker(bom, image, sha_id):
         "type": "container",
         "name": imageName,
         "version": imageVersion,
-        "purl": "pkg:docker/{}@{}".format(imageName,sha_id),
-        "properties": []
-        }
+        "purl": "pkg:docker/{}@{}".format(imageName, sha_id),
+        "properties": [],
+    }
     if component_present(bom, dok):
         return None
     bom["components"].append(dok)
-    depref =  {
-        "ref": uid,
-        "dependsOn": []
-        }
+    depref = {"ref": uid, "dependsOn": []}
     bom["dependencies"].append(depref)
     return uid
+
 
 def add_dependencies(bom, parent_id, component_id):
     for dep in bom["dependencies"]:
@@ -187,23 +207,24 @@ def add_dependencies(bom, parent_id, component_id):
 
 
 def scan_docker_containers(bom):
-        print("Scanning containers")
-        docks = get_docker_containers()
-        for d in docks:
-            print("Found image", d["Image"])
-            sha_id = get_docker_sha(d["ID"])
-            dok_id = add_docker(bom, d["Image"], sha_id)
-            if dok_id is None:
-                print("Already there")
+    print("Scanning containers")
+    docks = get_docker_containers()
+    for d in docks:
+        print("Found image", d["Image"])
+        sha_id = get_docker_sha(d["ID"])
+        dok_id = add_docker(bom, d["Image"], sha_id)
+        if dok_id is None:
+            print("Already there")
+            continue
+        container_sbom = trivy_scan_container(d["Image"])
+        for c in container_sbom["components"]:
+            if component_present(bom, c):
+                print("skipping already present", c["name"])
                 continue
-            container_sbom = trivy_scan_container(d["Image"])
-            for c in container_sbom["components"]:
-                if component_present(bom, c):
-                    print("skipping already present", c["name"])
-                    continue
-                bom["components"].append(c)
-                add_dependencies(bom, dok_id, c["bom-ref"])
-                print("appending", c["name"])
+            bom["components"].append(c)
+            add_dependencies(bom, dok_id, c["bom-ref"])
+            print("appending", c["name"])
+
 
 def check_trivy():
     result = subprocess.run(["which", "trivy"], stdout=subprocess.PIPE)
@@ -228,4 +249,4 @@ scan_docker_containers(bom)
 # upload_sbom("https://guardian.codenotary.com/api/v1/codenotary/sbom", bom)
 
 with open("output.json", "wt") as f:
-    json.dump(bom,f)
+    json.dump(bom, f)
