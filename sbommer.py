@@ -232,7 +232,7 @@ def scan_docker_containers(bom):
 def cleanup_sbom(sbom):
     # remove component which name is empty
     for c in sbom["components"]:
-        if c["name"] == "" and "purl" is not in c:
+        if c["name"] == "" and ("purl" not in c or c["purl"] == ""):
             print("deleting", c)
             sbom["components"].remove(c)
             for dep in sbom["dependencies"]:
