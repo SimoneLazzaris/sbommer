@@ -142,7 +142,10 @@ def get_docker_containers():
         universal_newlines=True,
         stderr=subprocess.PIPE,
     )
-    for instance in result.stdout.strip().split("\n"):
+    for instance in result.stdout.split("\n"):
+        instance = instance.strip()
+        if instance == "":
+            continue
         yield json.loads(instance)
 
 
