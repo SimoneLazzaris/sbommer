@@ -3,6 +3,7 @@ import subprocess
 import re
 import socket
 import sys
+import requests
 
 def trivy_scan_base():
     result = subprocess.run(
@@ -108,8 +109,8 @@ def add_system_metadata(bom):
     print("uid", uid)
     if "properties" not in bom:
         bom["properties"] = []
-    bom["properties"].append( {"name": "trustcenter#systemid", "value": uid } )
-    bom["properties"].append( {"name": "trustcenter#hostname", "value": socket.getfqdn() } )
+    bom["properties"].append( {"name": "machineId", "value": uid } )
+    bom["properties"].append( {"name": "hostname", "value": socket.getfqdn() } )
 
 
 def get_docker_containers():
@@ -161,6 +162,12 @@ def check_trivy():
         sys.exit(1)
 
 
+def upload_sbom(url, sbom):
+    print("uploading sbom")
+    result = requests.post(url, json=sbom)
+    print(result.json())
+
+
 check_trivy()
 proclist = running_process_list()
 listenproc = list_tcp_udp_listening_processes()
@@ -168,6 +175,7 @@ bom = trivy_scan_base()
 add_component_metadata(bom)
 add_system_metadata(bom)
 scan_docker_containers(bom)
+upload_sbom("https://guardian.codenotary.com/api/v1/codenotary/sbom", bom)
 
-with open("scan3.json", "wt") as f:
+with open("output.json", "wt") as f:
     json.dump(bom,f)
