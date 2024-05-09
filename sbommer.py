@@ -4,6 +4,7 @@ import re
 import socket
 import sys
 import requests
+import uuid
 
 def trivy_scan_base():
     result = subprocess.run(
@@ -142,17 +143,53 @@ def component_present(bom, new_component):
             return True
     return False
 
+def add_docker(bom, image):
+    if ":" in image:
+        imageName, imageVersion = image.split(":")
+    else:
+        imageName = image
+        imageVersion = "latest"
+    uid = str(uuid.uuid4())
+    dok = {
+        "bom-ref": uid,
+        "type": "container",
+        "name": imageName,
+        "version": imageVersion,
+        "purl": "pkg:docker/{}@{}".format(imageName,imageVersion),
+        "properties": []
+        }
+    if component_present(bom, dok):
+        return None
+    bom["components"].append(dok)
+    depref =  {
+        "ref": uid,
+        "dependsOn": []
+        }
+    bom["dependencies"].append(depref)
+    return uid
+
+def add_dependencies(bom, parent_id, component_id):
+    for dep in bom["dependencies"]:
+        if dep["ref"] == parent_id:
+            dep["dependsOn"].append(component_id)
+            return
+
 def scan_docker_containers(bom):
         print("Scanning containers")
         docks = get_docker_containers()
         for d in docks:
             print("Found image", d["Image"])
+            dok_id = add_docker(bom, d["Image"])
+            if dok_id is None:
+                print("Already there")
+                continue
             container_sbom = trivy_scan_container(d["Image"])
             for c in container_sbom["components"]:
                 if component_present(bom, c):
                     print("skipping already present", c["name"])
                     continue
                 bom["components"].append(c)
+                add_dependencies(bom, dok_id, c["bom-ref"])
                 print("appending", c["name"])
 
 def check_trivy():
@@ -175,7 +212,7 @@ bom = trivy_scan_base()
 add_component_metadata(bom)
 add_system_metadata(bom)
 scan_docker_containers(bom)
-upload_sbom("https://guardian.codenotary.com/api/v1/codenotary/sbom", bom)
+# upload_sbom("https://guardian.codenotary.com/api/v1/codenotary/sbom", bom)
 
 with open("output.json", "wt") as f:
     json.dump(bom,f)
