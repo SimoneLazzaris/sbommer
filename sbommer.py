@@ -1,6 +1,7 @@
 import json
 import subprocess
 import re
+import os
 import socket
 import sys
 import requests
@@ -54,7 +55,7 @@ def list_tcp_udp_listening_processes():
                 )  # Split into address and port components
                 if len(local_address_port) == 2:
                     port = local_address_port[1]
-                    if port.isdigit():
+                    if port.isdigit() and "users:" in line:
                         users = (
                             line.split("users:")[1]
                             .strip()
@@ -123,8 +124,10 @@ def add_component_metadata(bom):
 
 
 def add_system_metadata(bom):
-    with open("/sys/class/dmi/id/product_uuid", "rt") as f:
-        uid = f.read().strip()
+    uid = "unknown"
+    if os.path.exists("/sys/class/dmi/id/product_uuid"):
+        with open("/sys/class/dmi/id/product_uuid", "rt") as f:
+            uid = f.read().strip()
     print("uid", uid)
     if "properties" not in bom:
         bom["properties"] = []
