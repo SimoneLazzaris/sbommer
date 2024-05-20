@@ -6,16 +6,20 @@ import socket
 import sys
 import requests
 import uuid
+import tempfile
 
 
 def trivy_scan_base():
-    result = subprocess.run(
-        'trivy rootfs / --scanners="" --format cyclonedx'.split(" "),
-        stdout=subprocess.PIPE,
-        universal_newlines=True,
-        stderr=subprocess.PIPE,
-    )
-    return json.loads(result.stdout)
+    try:
+        (fnum,fname) = tempfile.mkstemp()
+        os.close(fnum)
+        result = subprocess.run(
+            ['trivy', 'rootfs', '/', '--scanners=""', '--format=cyclonedx', "--output={}".format(fname)],
+        )
+        with open(fname, "r") as f:
+            return json.load(f)
+    finally:
+        os.unlink(fname)
 
 
 def trivy_scan_container(image):
