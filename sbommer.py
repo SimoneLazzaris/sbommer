@@ -130,6 +130,46 @@ def add_component_metadata(bom):
             )
 
 
+def get_lsb_distro(distro):
+    result = subprocess.run(["lsb_release", "-a"], stdout=subprocess.PIPE)
+    lsb_map = { "Distributor ID": "Name", "Release": "Release", "Codename": "Codename"}
+    for line in result.stdout.decode().split("\n"):
+        if ":" not in line:
+            continue
+        prompt, value = (x.strip() for x in line.split(":"))
+        if prompt in lsb_map:
+            distro[lsb_map[prompt]] = value
+    return distro
+
+
+def get_os_release(filename, distro):
+    lsb_map = { "ID": "Name", "DISTRIB_ID": "Name", "VERSION_ID": "Release", "BUILD_ID": "Release", "DISTRIB_RELEASE": "Release", "VERSION_CODENAME": "Codename"}
+    with open(filename, "rt") as f:
+        for line in f:
+            m = re.match(r'^(\w+)="?(.*?)"?(?=\s|$)', line)
+            if m is None:
+                continue
+            prompt, value = m.groups()
+            if prompt in lsb_map:
+                distro[lsb_map[prompt]] = value
+    return distro
+
+
+def get_os_distro():
+    distro={"Name": "unknown", "Release": "unknown", "Codename": "unknown"}
+    # fine if lsb_release is installed
+    result = subprocess.run(["which", "lsb_release"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode == 0:
+        return get_lsb_distro(distro)
+    if os.path.exists("/etc/os-release"):
+        return get_os_release("/etc/os-release", distro)
+    release_file = glob.glob("/etc/*-release")
+    if len(release_file) > 0:
+        print(release_file[0])
+        get_os_release(release_file[0], distro)
+    return distro
+
+
 def add_system_metadata(bom):
     uid = "unknown"
     if os.path.exists("/sys/class/dmi/id/product_uuid"):
@@ -147,6 +187,9 @@ def add_system_metadata(bom):
         stderr=subprocess.PIPE,
     )
     bom["properties"].append({"name": "Codenotary:Trustcenter:KernelVersion", "value": result.stdout.strip()})
+    distro = get_os_distro()
+    for key in distro:
+        bom["properties"].append({"name": f"Codenotary:Trustcenter:Distro:{key}", "value": distro[key]})
 
 
 def get_docker_containers():
