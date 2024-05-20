@@ -95,7 +95,7 @@ def running_process_list():
     stdout, notused = process.communicate()
     ret = {}
     for line in stdout.splitlines():
-        m = re.match("^\s*([0-9]+)\s+(\S+).*", line.decode())
+        m = re.match(r"^\s*([0-9]+)\s+(\S+).*", line.decode())
         if m is None:
             continue
         pid = int(m.group(1))
