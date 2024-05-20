@@ -23,13 +23,16 @@ def trivy_scan_base():
 
 
 def trivy_scan_container(image):
-    result = subprocess.run(
-        ["trivy", "image", image, '--scanners=""', "--format=cyclonedx"],
-        stdout=subprocess.PIPE,
-        universal_newlines=True,
-        stderr=subprocess.PIPE,
-    )
-    return json.loads(result.stdout)
+    try:
+        (fnum,fname) = tempfile.mkstemp()
+        os.close(fnum)
+        result = subprocess.run(
+            ["trivy", "image", image, '--scanners=""', "--format=cyclonedx", "--output={}".format(fname)],
+        )
+        with open(fname, "r") as f:
+            return json.load(f)
+    finally:
+        os.unlink(fname)
 
 
 def list_tcp_udp_listening_processes():
