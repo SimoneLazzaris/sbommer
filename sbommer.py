@@ -7,6 +7,9 @@ import sys
 import requests
 import uuid
 import tempfile
+import glob
+import gzip
+import datetime
 
 
 def trivy_scan_base():
@@ -170,6 +173,106 @@ def get_os_distro():
     return distro
 
 
+def get_ip_address():
+    try:
+        result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], stdout=subprocess.PIPE)
+        match = re.search(r'src (\S+)', result.stdout.decode())
+        if match:
+            return match.group(1)
+    except subprocess.CalledProcessError as e:
+        return None
+
+def get_system_uptime():
+    with open('/proc/uptime', 'rt') as f:
+        uptime_seconds = float(f.readline().split()[0])
+    return uptime_seconds
+
+
+def get_last_update_time():
+    def get_last_update_time_arch():
+        if not os.path.exists('/var/log/pacman.log'):
+            return
+        log_files=glob.glob("/var/log/pacman.log*")
+        log_files.sort()
+        for filename in log_files:
+            if filename.endswith('.gz'):
+                zopen = gzip.open
+            else:
+                zopen = open
+            with zopen(filename, 'rt') as log_file:
+                for line in reversed(list(log_file)):
+                    if 'starting full system upgrade' in line:
+                        timestamp_str = re.search(r'^\[(.*?)\]', line).group(1)
+                        last_update_time = datetime.datetime.strptime(timestamp_str, '%Y-%m-%dT%H:%M:%S%z')
+                        return last_update_time
+        return None
+
+
+    def get_last_update_time_apt():
+        if not os.path.exists("/var/log/apt/history.log"):
+            return None
+        log_files=glob.glob("/var/log/apt/history.log.*.gz")
+        log_files.sort(key=lambda x: int(x.split(".")[2])) # sort using the numeric value of /var/log/apt/history.log.NNN.gz
+        log_files.insert(0, "/var/log/apt/history.log")
+        for filename in log_files:
+            if filename.endswith('.gz'):
+                zopen = gzip.open
+            else:
+                zopen = open
+            with zopen(filename, 'rt') as log_file:
+                for line in reversed(list(log_file)):
+                    if 'Start-Date' in line:
+                        timestamp_str = re.search(r'Start-Date: (.*)', line).group(1).strip()
+                        last_update_time = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                        return last_update_time
+        return None
+
+
+    def get_last_update_time_dnf():
+        if not os.path.exists("/var/log/dnf.log"):
+            return None
+        log_paths = glob.glob("/var/log/dnf.log*")
+        log_paths.sort()
+        for log_path in log_paths:
+            if log_path.endswith('.gz'):
+                zopen = gzip.open
+            else:
+                zopen = open
+            with zopen(log_path, 'rt') as log_file:
+                print(f"processing {log_path}")
+                # Search for lines that indicate an update was performed
+                for line in reversed(list(log_file)):
+                    if 'Updated:' in line or 'Upgrade:' in line or 'Upgraded:' in line:
+                        timestamp_str = line.split()[0]
+                        return datetime.datetime.strptime(timestamp_str, '%Y-%m-%dT%H:%M:%S%z')
+        return None
+
+
+    def get_last_update_time_yum():
+        if not os.path.exists("/var/log/yum.log"):
+            return None
+        log_paths = glob.glob("/var/log/yum.log*")
+        log_paths.sort()
+        for log_path in log_paths:
+            if log_path.endswith('.gz'):
+                zopen = gzip.open
+            else:
+                zopen = open
+            with zopen(log_path, 'rt') as log_file:
+                print(f"processing {log_path}")
+                # Search for lines that indicate an update was performed
+                for line in reversed(list(log_file)):
+                    if 'Updated:' in line or 'Upgrade:' in line or 'Upgraded:' in line:
+                        timestamp_str = re.match("(... .. ..:..:..)", line).group(1)
+                        return datetime.datetime.strptime(timestamp_str, "%b %d %H:%M:%S")
+        return None
+    for getter in [get_last_update_time_apt, get_last_update_time_dnf, get_last_update_time_yum, get_last_update_time_arch]:
+        last_update = getter()
+        if last_update is not None:
+            return last_update
+    return None
+
+
 def add_system_metadata(bom):
     uid = "unknown"
     if os.path.exists("/sys/class/dmi/id/product_uuid"):
@@ -180,6 +283,7 @@ def add_system_metadata(bom):
         bom["properties"] = []
     bom["properties"].append({"name": "Codenotary:Trustcenter:MachineID", "value": uid})
     bom["properties"].append({"name": "Codenotary:Trustcenter:Hostname", "value": socket.getfqdn()})
+    bom["properties"].append({"name": "Codenotary:Trustcenter:Uptime", "value": get_system_uptime()})
     result = subprocess.run(
         ["uname", "-r"],
         stdout=subprocess.PIPE,
@@ -190,14 +294,22 @@ def add_system_metadata(bom):
     distro = get_os_distro()
     for key in distro:
         bom["properties"].append({"name": f"Codenotary:Trustcenter:Distro:{key}", "value": distro[key]})
-
+    ip_address = get_ip_address()
+    if ip_address != None:
+        bom["properties"].append({"name": f"Codenotary:Trustcenter:PrimaryIP", "value": ip_address})
+    last_update = get_last_update_time()
+    if ip_address != None:
+        bom["properties"].append({"name": f"Codenotary:Trustcenter:LastSystemUpdate", "value": last_update.isoformat()})
+    if os.path.exists("/etc/system_function"):
+        with open("/etc/system_function", "rt") as f:
+            bom["properties"].append({"name": f"Codenotary:Trustcenter:SystemFunction", "value": f.read().strip()})
 
 def get_docker_containers():
     result = subprocess.run(["which", "docker"], stdout=subprocess.PIPE)
     if result.returncode != 0:
         return
     result = subprocess.run(
-        "docker container ls --format json".split(" "),
+        ["docker", "container", "ls", "--format", "{{json .}}"],
         stdout=subprocess.PIPE,
         universal_newlines=True,
         stderr=subprocess.PIPE,
