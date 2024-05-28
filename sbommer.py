@@ -283,7 +283,7 @@ def add_system_metadata(bom):
         bom["properties"] = []
     bom["properties"].append({"name": "Codenotary:Trustcenter:MachineID", "value": uid})
     bom["properties"].append({"name": "Codenotary:Trustcenter:Hostname", "value": socket.getfqdn()})
-    bom["properties"].append({"name": "Codenotary:Trustcenter:Uptime", "value": get_system_uptime()})
+    bom["properties"].append({"name": "Codenotary:Trustcenter:Uptime", "value": str(get_system_uptime())})
     result = subprocess.run(
         ["uname", "-r"],
         stdout=subprocess.PIPE,
